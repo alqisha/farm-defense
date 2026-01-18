@@ -37,9 +37,23 @@ interface GameState {
     lives: number;    // Player Health (if 0 -> Game Over)
     gameStatus: 'MENU' | 'PLAYING' | 'GAME_OVER' | 'VICTORY';
     isMuted: boolean;
+    isUIOpen: boolean;
+
+    // Safety & Offline
+    isDataLoaded: boolean;
+    offlineEarnings: { amount: number; hours: number; multiplier: number } | null;
+
+    // Boosters
+    damageMultiplier: number;
+    boosterEndTime: number;
+    activateBooster: (durationMs: number) => void;
 
     // Actions
     setSession: (session: Session | null) => void;
+    setUIOpen: (isOpen: boolean) => void;
+    setDataLoaded: (isLoaded: boolean) => void;
+    setOfflineEarnings: (earnings: { amount: number; hours: number; multiplier: number } | null) => void;
+
     toggleMute: () => void;
     setGameState: (state: Partial<GameState>) => void;
     restartLevel: () => void;
@@ -73,8 +87,35 @@ export const useGameStore = create<GameState>((set, get) => ({
     isWaveActive: false,
     gameStatus: 'MENU',
     isMuted: false,
+    isUIOpen: false,
+
+    isDataLoaded: false,
+    offlineEarnings: null,
+
+    // Boosters
+    damageMultiplier: 1,
+    boosterEndTime: 0,
 
     setSession: (session) => set({ session }),
+    setUIOpen: (isOpen) => set({ isUIOpen: isOpen }),
+    setDataLoaded: (isLoaded) => set({ isDataLoaded: isLoaded }),
+    setOfflineEarnings: (earnings) => set({ offlineEarnings: earnings }),
+
+    // Booster Logic
+    activateBooster: (durationMs) => {
+        const now = Date.now();
+        set({ damageMultiplier: 2, boosterEndTime: now + durationMs });
+
+        // Auto-disable after duration
+        setTimeout(() => {
+            const { boosterEndTime } = get();
+            // Only reset if this specific booster expired (simple check)
+            if (Date.now() >= boosterEndTime) {
+                set({ damageMultiplier: 1, boosterEndTime: 0 });
+            }
+        }, durationMs);
+    },
+
     toggleMute: () => set((state) => ({ isMuted: !state.isMuted })),
     setGameState: (state) => set(state),
 
@@ -129,15 +170,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     spawnEnemy: (pathStart, isBoss = false) => {
         const { stage, wave } = get();
 
-        // HP Logic: Base 20, scales heavily with Stage
-        // Wave adds difficulty too.
-        // E.g. Stage 1, Wave 1: 20 + 20 + 10 = 50 HP.
-        // E.g. Stage 2, Wave 1: 20 + 40 + 10 = 70 HP.
-        let hp = 20 + (stage * 20) + (wave * 10);
+        // HP Logic: Balance 3.0 (Exponential)
+        // Base 60, +20% per Wave
+        const baseHp = 60;
+        let hp = baseHp * Math.pow(1.2, wave - 1); // Wave 1 = 60, Wave 10 = ~309
+
+        // Stage Multiplier (Global Difficulty)
+        // Stage 1: x1, Stage 2: x2... 
+        hp *= stage;
 
         if (isBoss) {
-            hp *= 5; // Boss is 5x tougher than normal creep
+            hp *= 3; // Boss is 3x tougher (was 5x, reduced because base HP scales faster now)
         }
+
+        // Round to int
+        hp = Math.floor(hp);
 
         const newEnemy: Enemy = {
             id: crypto.randomUUID(),
@@ -214,11 +261,18 @@ export const useGameStore = create<GameState>((set, get) => ({
             });
 
             const alive = enemiesAfterDamage.filter(e => e.hp > 0);
-            const deadCount = enemiesAfterDamage.length - alive.length;
+            const dead = enemiesAfterDamage.filter(e => e.hp <= 0);
+
+            // Reward Calculation: 25% of Max HP of killed enemies
+            // This ensures economy scales with difficulty
+            let reward = 0;
+            dead.forEach(e => {
+                reward += Math.max(1, Math.floor(e.maxHp * 0.25));
+            });
 
             return {
                 enemies: alive,
-                wheat: state.wheat + (deadCount * 10) // Reward 10 wheat per kill
+                wheat: state.wheat + reward
             };
         });
         // Check wave status implicitly or explicitly?

@@ -4,7 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import { InstancedMesh, Object3D } from 'three';
 
 // --- Types ---
-type EffectType = 'MERGE' | 'HIT' | 'SPAWN';
+type EffectType = 'MERGE' | 'HIT' | 'SPAWN' | 'DEATH' | 'LEVELUP';
 
 interface Particle {
     id: number;
@@ -18,9 +18,6 @@ interface Particle {
 
 interface EffectsState {
     triggerEffect: (type: EffectType, position: [number, number, number], color?: string) => void;
-    // We won't store particles in Zustand to avoid re-renders. 
-    // Instead we'll use an event emitter pattern or just a simple ref access if possible.
-    // Actually, let's use a queue that the component drains.
     queue: ParticleRequest[];
     drainQueue: () => ParticleRequest[];
 }
@@ -45,14 +42,12 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
 }));
 
 // --- Component ---
-const MAX_PARTICLES = 1000;
+const MAX_PARTICLES = 1500;
 const tempObj = new Object3D();
 
 export const ParticleSystem = () => {
     const meshRef = useRef<InstancedMesh>(null);
     const drainQueue = useEffectsStore(state => state.drainQueue);
-
-    // Local state for particles (animation loop only)
     const particles = useRef<Particle[]>([]);
 
     useFrame((_state, delta) => {
@@ -61,30 +56,37 @@ export const ParticleSystem = () => {
         // 1. Spawn new particles
         const newRequests = drainQueue();
         newRequests.forEach(req => {
-            const count = req.type === 'MERGE' ? 20 : (req.type === 'HIT' ? 5 : 10);
+            let count = 10;
+            let speed = 5;
+            let life = 1.0;
+            let baseColor = '#fbbf24';
+
+            if (req.type === 'MERGE') { count = 20; speed = 3; baseColor = '#fbbf24'; }
+            else if (req.type === 'HIT') { count = 3; speed = 4; life = 0.5; baseColor = '#ef4444'; }
+            else if (req.type === 'DEATH') { count = 30; speed = 6; life = 1.2; baseColor = '#dc2626'; }
+            else if (req.type === 'LEVELUP') { count = 100; speed = 8; life = 2.0; baseColor = '#ffd700'; }
 
             for (let i = 0; i < count; i++) {
                 if (particles.current.length >= MAX_PARTICLES) break;
 
-                const speed = req.type === 'MERGE' ? 2 : 5;
-                // const spread = req.type === 'MERGE' ? 0.5 : 0.2;
+                const color = req.color || baseColor;
 
                 particles.current.push({
                     id: Math.random(),
                     type: req.type,
                     position: [
-                        req.position[0] + (Math.random() - 0.5) * 0.2,
+                        req.position[0],
                         req.position[1],
-                        req.position[2] + (Math.random() - 0.5) * 0.2
+                        req.position[2]
                     ],
                     velocity: [
                         (Math.random() - 0.5) * speed,
-                        (Math.random() * speed) + (req.type === 'MERGE' ? 2 : 0), // Pop up for merge
+                        (Math.random() * speed) + (req.type === 'LEVELUP' ? 5 : 2),
                         (Math.random() - 0.5) * speed
                     ],
-                    life: 1.0,
+                    life: life,
                     scale: Math.random() * 0.2 + 0.1,
-                    color: req.color || (req.type === 'MERGE' ? '#fbbf24' : '#ef4444')
+                    color: color
                 });
             }
         });
@@ -92,10 +94,9 @@ export const ParticleSystem = () => {
         // 2. Update & Render
         let activeCount = 0;
 
-        // Filter dead particles (in-place or filter)
         for (let i = particles.current.length - 1; i >= 0; i--) {
             const p = particles.current[i];
-            p.life -= delta * 2; // Fade speed
+            p.life -= delta * (p.type === 'LEVELUP' ? 0.5 : 2); // Slower fade for levelup
 
             if (p.life <= 0) {
                 particles.current.splice(i, 1);
@@ -107,20 +108,23 @@ export const ParticleSystem = () => {
             p.position[1] += p.velocity[1] * delta;
             p.position[2] += p.velocity[2] * delta;
 
-            // Gravity
-            p.velocity[1] -= 9.8 * delta;
+            p.velocity[1] -= 15 * delta; // Gravity
 
-            // Update Instance
+            // Bounce floor
+            if (p.position[1] < 0) {
+                p.position[1] = 0;
+                p.velocity[1] *= -0.5;
+            }
+
             tempObj.position.set(p.position[0], p.position[1], p.position[2]);
             tempObj.scale.setScalar(p.scale * p.life);
             tempObj.updateMatrix();
 
             meshRef.current.setMatrixAt(activeCount, tempObj.matrix);
-            // Color support requires custom shader or multiple meshes. 
-            // For MVP, let's just stick to one color or use instanceColor if we want to be fancy.
-            // Let's assume Gold for now for everything, or mix.
-            // instanceColor buffer usage is a bit more verbose, skipping for "simple" wow factor. 
-            // MERGE is Gold. HIT is keeping simple. Let's just make them glowing Gold/White cubes.
+
+            // Note: Single material color used for MVP. 
+            // In a real app we'd use setColorAt with instanceColor or different meshes/materials.
+            // For now, they are all Gold/White-ish.
 
             activeCount++;
         }
@@ -135,8 +139,8 @@ export const ParticleSystem = () => {
             args={[undefined, undefined, MAX_PARTICLES]}
             frustumCulled={false}
         >
-            <boxGeometry args={[0.5, 0.5]} />
-            <meshBasicMaterial color="#fbbf24" transparent opacity={0.8} />
+            <boxGeometry args={[0.3, 0.3, 0.3]} />
+            <meshStandardMaterial color="#fbbf24" emissive="#fbbf24" emissiveIntensity={0.5} transparent opacity={0.9} />
         </instancedMesh>
     );
 };

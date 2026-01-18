@@ -1,22 +1,34 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useGameStore, type Plant } from '../store/gameStore';
+import { SoundManager } from './SoundManager';
 
 const tg = (window as any).Telegram?.WebApp;
 
 export const PersistenceManager = () => {
-    const { setSession, setGameState, wheat, goldWheat, plants, stage, wave } = useGameStore();
+    const {
+        setSession, setGameState, wheat, goldWheat, plants, stage, wave,
+        isDataLoaded, setDataLoaded, setOfflineEarnings
+    } = useGameStore();
+
+    const loadedRef = useRef(false);
 
     // 1. Init Auth & Load Data
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session);
-            if (session) loadData(session.user.id);
+            if (session && !loadedRef.current) {
+                loadedRef.current = true; // Prevent double load
+                loadData(session.user.id);
+            }
         });
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setSession(session);
-            if (session) loadData(session.user.id);
+            if (session && !loadedRef.current) {
+                loadedRef.current = true;
+                loadData(session.user.id);
+            }
         });
 
         return () => subscription.unsubscribe();
@@ -44,6 +56,46 @@ export const PersistenceManager = () => {
                 wave: profile.current_wave || 1,
                 telegramUsername: profile.telegram_username
             });
+
+            // CHECK OFFLINE INCOME V2
+            const totalProduction = dbPlants ? dbPlants.reduce((acc, p) => acc + p.plant_level, 0) : 0;
+
+            if (totalProduction > 0) {
+                // Call V2 RPC
+                console.log('Checking offline income...');
+                const { data: result, error } = await supabase.rpc('claim_offline_income_v2', {
+                    production_rate_per_sec: totalProduction
+                });
+
+                if (error) {
+                    console.error('Offline Income Error:', error);
+                    // Fallback or alert if function missing?
+                    // Maybe user forgot to run SQL
+                } else {
+                    console.log('Offline Income Result:', result);
+                    // Result format: { earned: 100, hours: 2, multiplier: 1.5 }
+                    if (result && result.earned > 0) {
+                        // User requested 10s delay
+                        console.log('Offline earnings found. Will display in 10s.');
+                        console.log('Offline earnings found. Will display soon.');
+                        setTimeout(() => {
+                            setOfflineEarnings({
+                                amount: result.earned,
+                                hours: result.hours,
+                                multiplier: result.multiplier
+                            });
+                            SoundManager.playMerge(); // Alert user
+                        }, 1500);
+                    }
+                }
+            }
+
+            // CHECK REFERRAL (Start Param)
+            const startParam = tg?.initDataUnsafe?.start_param;
+            if (startParam && startParam.startsWith('ref_')) {
+                const referrerId = startParam.replace('ref_', '');
+                await supabase.rpc('process_referral', { referrer_id: referrerId });
+            }
         }
 
         if (dbPlants) {
@@ -54,19 +106,28 @@ export const PersistenceManager = () => {
             }));
             setGameState({ plants: loadedPlants });
         }
+
+        // Critical: Mark data as loaded so auto-save can proceed
+        setDataLoaded(true);
+        console.log('Data loaded successfully');
     };
 
     // 2. Auto-Save (Debounced)
     useEffect(() => {
+        // SAFETY: Do not save if data hasn't loaded yet!
+        if (!isDataLoaded) return;
+
         const timer = setTimeout(async () => {
             const { session } = useGameStore.getState();
             if (!session) return;
 
             const userId = session.user.id;
+            console.log('Auto-saving...');
 
             // Save Profile
             // auto-detect TG username if present in env
-            const tgUser = tg?.initDataUnsafe?.user?.username;
+            const tgUser = tg?.initDataUnsafe?.user;
+            const username = tgUser?.username || tgUser?.first_name || 'Farmer';
 
             await supabase.from('profiles').upsert({
                 id: userId,
@@ -74,18 +135,10 @@ export const PersistenceManager = () => {
                 gold_wheat_balance: goldWheat,
                 current_stage: stage,
                 current_wave: wave,
-                ...(tgUser ? { telegram_username: tgUser } : {})
+                ...(username ? { telegram_username: username } : {})
             });
 
-            // Save Plants (Full Sync Strategy - Simplest for Prototype)
-            // Ideally we should sync diffs, but for < 25 items, full replace is okay-ish if we handle IDs correctly.
-            // Actually, `user_plants` uses UUIDs.
-
-            // For now, let's just Upsert current plants.
-            // CAUTION: This doesn't handle deletions (merges) well if we don't delete old ones.
-            // To fix merge deletions, we need to delete plants not in the list.
-
-            // Step 1: Get all DB IDs
+            // Save Plants (Upsert + Delete stale)
             const { data: currentDbPlants } = await supabase.from('user_plants').select('id').eq('user_id', userId);
             const currentDbIds = currentDbPlants?.map(p => p.id) || [];
             const localIds = plants.map(p => p.id);
@@ -113,7 +166,7 @@ export const PersistenceManager = () => {
         }, 2000); // Save every 2 seconds of inactivity
 
         return () => clearTimeout(timer);
-    }, [wheat, goldWheat, plants, stage, wave]);
+    }, [wheat, goldWheat, plants, stage, wave, isDataLoaded]);
 
     return null; // Logic only
 };

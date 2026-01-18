@@ -55,11 +55,22 @@ export const Plant = ({ level, position, worldPosition, isSelected, onClick }: P
 
             if (targetId && tPos) {
                 // SHOOT
-                damageEnemy(targetId, 5 * level);
+                // Damage Logic: Balance 3.0 + Boosters
+                // 10 * (2.1 ^ (Level - 1)) * Multiplier
+                const multiplier = useGameStore.getState().damageMultiplier || 1;
+                const damage = Math.floor(10 * Math.pow(2.1, level - 1) * multiplier);
+
+                damageEnemy(targetId, damage);
                 SoundManager.playShoot();
 
-                // Trigger Effect
-                useEffectsStore.getState().triggerEffect('HIT', tPos);
+                // Check for Death
+                const enemy = enemies.find(e => e.id === targetId);
+                // Note: We check current state. If damage is >= hp, it's a kill.
+                if (enemy && enemy.hp <= damage) {
+                    useEffectsStore.getState().triggerEffect('DEATH', tPos);
+                } else {
+                    useEffectsStore.getState().triggerEffect('HIT', tPos);
+                }
 
                 lastShotTime.current = now;
                 setTargetPos(tPos);
@@ -72,6 +83,7 @@ export const Plant = ({ level, position, worldPosition, isSelected, onClick }: P
 
     const colors = ['#4ade80', '#22c55e', '#16a34a', '#15803d', '#14532d']; // Levels 1-5
     const color = colors[Math.min(level - 1, colors.length - 1)];
+    const isUIOpen = useGameStore(state => state.isUIOpen);
 
     return (
         <group position={position}>
@@ -80,23 +92,26 @@ export const Plant = ({ level, position, worldPosition, isSelected, onClick }: P
                 ref={meshRef}
                 onClick={(e) => { e.stopPropagation(); onClick?.(); }}
                 visible={false}
+                position={[0, -0.2, 0]} // Also center hitbox better
             >
                 <boxGeometry args={[1, 1, 1]} />
             </mesh>
 
-            <group onClick={(e) => { e.stopPropagation(); onClick?.(); }}>
+            <group onClick={(e) => { e.stopPropagation(); onClick?.(); }} position={[0, -0.3, 0]}>
                 <PlantModel level={level} color={color} />
 
-                {/* Level Text (Floating) */}
-                <Html position={[0, 1.2, 0]} center pointerEvents="none">
-                    <div className="text-white font-black text-xs bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm border border-white/20 shadow-sm whitespace-nowrap select-none">
-                        Lvl {level}
-                    </div>
-                </Html>
+                {/* Level Text (Floating) - Hide if UI is open */}
+                {!isUIOpen && (
+                    <Html position={[0, 1.2, 0]} center pointerEvents="none" zIndexRange={[0, 50]}>
+                        <div className="text-white font-black text-xs bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm border border-white/20 shadow-sm whitespace-nowrap select-none">
+                            Lvl {level}
+                        </div>
+                    </Html>
+                )}
 
                 {/* Selection Ring */}
                 {isSelected && (
-                    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
+                    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.4, 0]}>
                         <ringGeometry args={[0.4, 0.5, 32]} />
                         <meshBasicMaterial color="yellow" />
                     </mesh>

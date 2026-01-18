@@ -11,7 +11,14 @@ export const GameScene = () => {
     return (
         <div className="w-full h-screen bg-gray-900">
             <Canvas shadows>
-                <Suspense fallback={null}>
+                <Suspense fallback={
+                    <group>
+                        <mesh position={[0, 0, 0]}>
+                            <sphereGeometry args={[1, 16, 16]} />
+                            <meshStandardMaterial color="yellow" wireframe />
+                        </mesh>
+                    </group>
+                }>
                     {/* Fixed Isometric Camera (Steeper for better clicking) */}
                     <PerspectiveCamera makeDefault position={[0, 20, 10]} fov={35} />
                     <OrbitControls

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useGameStore } from '../store/gameStore';
 
@@ -10,8 +10,47 @@ export const AuthDialog = () => {
     const [mode, setMode] = useState<'LOGIN' | 'SIGNUP'>('LOGIN');
     const [msg, setMsg] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
 
-    // If logged in, hide component
-    if (session) return null;
+    // Auto-login for Telegram
+    useEffect(() => {
+        const tg = (window as any).Telegram?.WebApp;
+        if (tg?.initDataUnsafe?.user) {
+            const tgUser = tg.initDataUnsafe.user;
+            const dummyEmail = `tg_${tgUser.id}@farm.bot`;
+            const dummyPass = `secret_farm_${tgUser.id}_pass`;
+
+            const attemptAuth = async () => {
+                setLoading(true);
+
+                // Try login first
+                let { error } = await supabase.auth.signInWithPassword({
+                    email: dummyEmail,
+                    password: dummyPass
+                });
+
+                if (error) {
+                    // Start registration if login fails
+                    const signUpRes = await supabase.auth.signUp({
+                        email: dummyEmail,
+                        password: dummyPass
+                    });
+                    error = signUpRes.error;
+                }
+
+                if (error) {
+                    console.error("TG Auth failed:", error);
+                    // Translate common errors
+                    let errorText = error.message;
+                    if (error.message.includes("Invalid login credentials")) errorText = "Неверный логин (или почта не подтверждена)";
+                    if (error.message.includes("Email not confirmed")) errorText = "Почта не подтверждена! Отключите 'Confirm Email' в Supabase.";
+
+                    setMsg({ text: `Ошибка: ${errorText}`, type: 'error' });
+                    setLoading(false);
+                }
+            };
+
+            attemptAuth();
+        }
+    }, []);
 
     const handleAuth = async () => {
         setLoading(true);
@@ -21,7 +60,6 @@ export const AuthDialog = () => {
             if (mode === 'LOGIN') {
                 const { error } = await supabase.auth.signInWithPassword({ email, password });
                 if (error) throw error;
-                // If success, PersistenceManager will update session, causing this component to return null
             } else {
                 const { error } = await supabase.auth.signUp({ email, password });
                 if (error) throw error;
@@ -34,8 +72,11 @@ export const AuthDialog = () => {
         }
     };
 
+    // If logged in, hide component
+    if (session) return null;
+
     return (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-300">
             <div className="bg-gray-900 border border-gray-700 p-8 rounded-2xl w-full max-w-sm shadow-2xl relative">
                 <h2 className="text-2xl font-bold text-white mb-6 text-center">
                     {mode === 'LOGIN' ? 'Вход в игру' : 'Регистрация'}

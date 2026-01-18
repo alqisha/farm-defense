@@ -121,5 +121,30 @@ export const SoundManager = {
             }
             tg?.HapticFeedback.notificationOccurred('success');
         } catch (e) { }
-    }
+    },
+
+    playPowerup: () => {
+        playTone(400, 0.1, 'sine');
+        setTimeout(() => playTone(600, 0.1, 'sine'), 100);
+        setTimeout(() => playTone(800, 0.3, 'sine'), 200);
+    },
+};
+
+// Helper for simple tones 
+// (Move playTone inside SoundManager or make it a helper function in file scope)
+const playTone = (freq: number, dur: number, type: OscillatorType) => {
+    if (useGameStore.getState().isMuted) return;
+    try {
+        const ctx = getCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + dur);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + dur);
+    } catch (e) { }
 };

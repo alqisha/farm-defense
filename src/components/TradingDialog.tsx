@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useGameStore } from '../store/gameStore';
 import { X, Send } from 'lucide-react';
@@ -9,6 +9,23 @@ export const TradingDialog = ({ onClose }: { onClose: () => void }) => {
     const [loading, setLoading] = useState(false);
     const [status, setStatus] = useState<{ msg: string, isError: boolean } | null>(null);
     const { goldWheat, setGameState } = useGameStore();
+
+    const [recent, setRecent] = useState<any[]>([]);
+
+    useEffect(() => {
+        // Load recent contacts
+        const loadRecent = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+
+            const { data } = await supabase.rpc('get_recent_receivers', {
+                sender_uuid: session.user.id,
+                limit_count: 5
+            });
+            if (data) setRecent(data);
+        };
+        loadRecent();
+    }, []);
 
     const handleTransfer = async () => {
         if (!receiver || !amount) return;
@@ -61,7 +78,7 @@ export const TradingDialog = ({ onClose }: { onClose: () => void }) => {
     };
 
     return (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div className="bg-gray-900/90 border border-amber-500/30 p-6 rounded-2xl w-full max-w-sm shadow-2xl relative overflow-hidden">
                 {/* Glow Effect */}
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-500 to-yellow-300"></div>
@@ -85,6 +102,20 @@ export const TradingDialog = ({ onClose }: { onClose: () => void }) => {
                             onChange={e => setReceiver(e.target.value)}
                             className="w-full bg-black/50 border border-gray-700 text-white px-4 py-3 rounded-xl focus:outline-none focus:border-amber-500 transition-colors"
                         />
+                        {/* Recent Contacts */}
+                        {recent.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                {recent.map((r: any) => (
+                                    <button
+                                        key={r.receiver_id}
+                                        onClick={() => setReceiver(r.username)}
+                                        className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-2 py-1 rounded border border-gray-600 transition-colors"
+                                    >
+                                        {r.username}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div>
