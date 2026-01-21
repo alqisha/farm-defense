@@ -16,7 +16,7 @@ interface PlantProps {
 }
 
 const RANGE = 3.5;
-const COOLDOWN = 2500; // ms
+const COOLDOWN = 2000; // ms
 
 export const Plant = ({ level, position, worldPosition, isSelected, onClick }: PlantProps) => {
     const meshRef = useRef<Mesh>(null);
@@ -58,7 +58,7 @@ export const Plant = ({ level, position, worldPosition, isSelected, onClick }: P
                 // Damage Logic: Balance 3.0 + Boosters
                 // 10 * (2.1 ^ (Level - 1)) * Multiplier
                 const multiplier = useGameStore.getState().damageMultiplier || 1;
-                const damage = Math.floor(10 * Math.pow(2.1, level - 1) * multiplier);
+                const damage = Math.floor(15 * Math.pow(2.1, level - 1) * multiplier);
 
                 damageEnemy(targetId, damage);
                 SoundManager.playShoot();

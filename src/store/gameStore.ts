@@ -72,7 +72,7 @@ interface GameState {
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
-    wheat: 100,
+    wheat: 50,
     goldWheat: 0,
     plants: [],
     enemies: [],
@@ -130,7 +130,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     addPlant: (index) => {
         const { plants } = get();
         if (plants.find(p => p.gridIndex === index)) return;
-        if (get().wheat < 10) return;
+        if (get().wheat < 50) return;
 
         const newPlant: Plant = {
             id: crypto.randomUUID(),
@@ -138,7 +138,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             gridIndex: index,
         };
 
-        set({ plants: [...plants, newPlant], wheat: get().wheat - 10 });
+        set({ plants: [...plants, newPlant], wheat: get().wheat - 50 });
     },
 
     movePlant: (plantId, newIndex) => {
@@ -172,8 +172,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
         // HP Logic: Balance 3.0 (Exponential)
         // Base 60, +20% per Wave
-        const baseHp = 60;
-        let hp = baseHp * Math.pow(1.2, wave - 1); // Wave 1 = 60, Wave 10 = ~309
+        const baseHp = 100;
+        let hp = baseHp * Math.pow(1.15, wave - 1); // Wave 1 = 100, Wave 10 = ~350
 
         // Stage Multiplier (Global Difficulty)
         // Stage 1: x1, Stage 2: x2... 
@@ -263,12 +263,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             const alive = enemiesAfterDamage.filter(e => e.hp > 0);
             const dead = enemiesAfterDamage.filter(e => e.hp <= 0);
 
-            // Reward Calculation: 25% of Max HP of killed enemies
-            // This ensures economy scales with difficulty
-            let reward = 0;
-            dead.forEach(e => {
-                reward += Math.max(1, Math.floor(e.maxHp * 0.25));
-            });
+            // Reward Calculation: Flat 5 Wheat per kill (Prevent Farming infinite money)
+            const reward = dead.length * 5;
 
             return {
                 enemies: alive,

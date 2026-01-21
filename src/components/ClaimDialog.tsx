@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Wheat, Clock, TrendingUp } from 'lucide-react';
+import { Wheat, Clock, TrendingUp, Coins } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
 import { SoundManager } from './SoundManager';
 
 export const ClaimDialog = () => {
-    const { offlineEarnings, setOfflineEarnings, setGameState, wheat } = useGameStore();
+    const { offlineEarnings, setOfflineEarnings, setGameState, wheat, goldWheat } = useGameStore();
     const [isClaiming, setIsClaiming] = useState(false);
 
     if (!offlineEarnings) return null;
@@ -19,6 +19,22 @@ export const ClaimDialog = () => {
             setOfflineEarnings(null);
             setIsClaiming(false);
         }, 1000); // 1s animation duration
+    };
+
+    const handleDoubleClaim = () => {
+        if (goldWheat < 30) return;
+
+        setIsClaiming(true);
+        SoundManager.playBuy();
+
+        setTimeout(() => {
+            setGameState({
+                wheat: wheat + (offlineEarnings.amount * 2),
+                goldWheat: goldWheat - 30
+            });
+            setOfflineEarnings(null);
+            setIsClaiming(false);
+        }, 1000);
     };
 
     const formatTime = (h: number) => {
@@ -88,13 +104,31 @@ export const ClaimDialog = () => {
                     </div>
                 </div>
 
-                <button
-                    onClick={handleClaim}
-                    disabled={isClaiming}
-                    className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black text-xl py-3 rounded-xl shadow-lg shadow-yellow-900/40 transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2 mt-2"
-                >
-                    {isClaiming ? 'CLAIMING...' : 'CLAIM REWARD'}
-                </button>
+                <div className="flex gap-3 w-full mt-2">
+                    <button
+                        onClick={handleClaim}
+                        disabled={isClaiming}
+                        className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-xl shadow-lg transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
+                    >
+                        {isClaiming ? '...' : 'CLAIM'}
+                    </button>
+
+                    <button
+                        onClick={handleDoubleClaim}
+                        disabled={isClaiming || goldWheat < 30}
+                        className={`flex-1 font-black text-xl py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 flex-col leading-none ${goldWheat >= 30
+                                ? 'bg-yellow-500 hover:bg-yellow-400 text-black hover:scale-105 active:scale-95 shadow-yellow-900/40'
+                                : 'bg-gray-800 text-gray-500 cursor-not-allowed border-2 border-gray-700'
+                            }`}
+                    >
+                        <div className="flex items-center gap-1">
+                            x2 CLAIM
+                        </div>
+                        <div className="text-xs font-bold flex items-center gap-1 opacity-80">
+                            30 <Coins size={12} />
+                        </div>
+                    </button>
+                </div>
 
             </div>
         </div>

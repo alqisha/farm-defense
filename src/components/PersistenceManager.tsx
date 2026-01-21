@@ -69,23 +69,17 @@ export const PersistenceManager = () => {
 
                 if (error) {
                     console.error('Offline Income Error:', error);
-                    // Fallback or alert if function missing?
-                    // Maybe user forgot to run SQL
                 } else {
                     console.log('Offline Income Result:', result);
                     // Result format: { earned: 100, hours: 2, multiplier: 1.5 }
                     if (result && result.earned > 0) {
-                        // User requested 10s delay
-                        console.log('Offline earnings found. Will display in 10s.');
-                        console.log('Offline earnings found. Will display soon.');
-                        setTimeout(() => {
-                            setOfflineEarnings({
-                                amount: result.earned,
-                                hours: result.hours,
-                                multiplier: result.multiplier
-                            });
-                            SoundManager.playMerge(); // Alert user
-                        }, 1500);
+                        // Display immediately
+                        setOfflineEarnings({
+                            amount: result.earned,
+                            hours: result.hours,
+                            multiplier: result.multiplier
+                        });
+                        SoundManager.playMerge(); // Alert user
                     }
                 }
             }
